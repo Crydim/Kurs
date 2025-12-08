@@ -3,8 +3,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Settings:
-    DB_URL: str = os.getenv("DB_URL", "mysql:///hr.db")
+    DB_URL: str = os.getenv("DB_URL", "sqlite:///hr.db")
 
     ADMIN_DEFAULT_LOGIN: str = os.getenv("ADMIN_LOGIN", "admin")
     ADMIN_DEFAULT_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin")
@@ -14,5 +15,8 @@ class Settings:
     SFTP_USER: str | None = os.getenv("SFTP_USER")
     SFTP_PASSWORD: str | None = os.getenv("SFTP_PASSWORD")
     SFTP_REMOTE_DIR: str | None = os.getenv("SFTP_REMOTE_DIR")
+
+    BACKUP_DIR: str = os.getenv("BACKUP_DIR", "backups")
+
 
 settings = Settings()

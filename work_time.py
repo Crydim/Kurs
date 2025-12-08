@@ -1,5 +1,6 @@
 from datetime import datetime, date
 from sqlalchemy.orm import Session
+
 from models import Employee, WorkLog, WorkStatus
 
 
@@ -21,14 +22,18 @@ def get_or_create_today_log(session: Session, employee: Employee) -> WorkLog:
     return log
 
 
-def start_workday(session: Session, employee: Employee):
+def start_workday(session: Session, employee: Employee) -> str:
     log = get_or_create_today_log(session, employee)
     if log.start_time is not None:
         return "Рабочий день уже начат."
     log.start_time = datetime.utcnow()
 
     if employee.status is None:
-        status = WorkStatus(employee_id=employee.id, current_status="working")
+        status = WorkStatus(
+            employee_id=employee.id,
+            current_status="working",
+            workday_start=log.start_time.time(),
+        )
         session.add(status)
     else:
         employee.status.current_status = "working"
@@ -37,7 +42,7 @@ def start_workday(session: Session, employee: Employee):
     return "Начало рабочего дня зафиксировано."
 
 
-def end_workday(session: Session, employee: Employee):
+def end_workday(session: Session, employee: Employee) -> str:
     log = get_or_create_today_log(session, employee)
     if log.start_time is None:
         return "Нельзя завершить день: начало ещё не зафиксировано."

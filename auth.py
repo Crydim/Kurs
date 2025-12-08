@@ -1,6 +1,8 @@
 from getpass import getpass
+
 from passlib.hash import bcrypt
 from sqlalchemy.orm import Session
+
 from models import User, AppRole
 from settings import settings
 from db import SessionLocal
@@ -14,14 +16,14 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.verify(password, hashed)
 
 
-def ensure_admin_exists():
+def ensure_admin_exists() -> None:
     with SessionLocal() as session:
         admin = session.query(User).filter_by(username=settings.ADMIN_DEFAULT_LOGIN).first()
         if not admin:
             admin = User(
                 username=settings.ADMIN_DEFAULT_LOGIN,
                 password_hash=hash_password(settings.ADMIN_DEFAULT_PASSWORD),
-                role=AppRole.ADMIN
+                role=AppRole.ADMIN,
             )
             session.add(admin)
             session.commit()
