@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
-    DB_URL: str = os.getenv("DB_URL", "sqlite:///hr.db")
+    DB_URL: str = os.getenv("DB_URL", "mysql:///hr.db")
 
     ADMIN_DEFAULT_LOGIN: str = os.getenv("ADMIN_LOGIN", "admin")
     ADMIN_DEFAULT_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin")

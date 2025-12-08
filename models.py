@@ -13,6 +13,7 @@ class AppRole(str, enum.Enum):
     HR = "hr"
     MANAGER = "manager"
     VIEWER = "viewer"
+    EMPLOYEE = "employee"
 
 
 class User(Base):
@@ -160,6 +161,17 @@ class WorkStatus(Base):
 
     employee: Mapped["Employee"] = relationship(back_populates="status")
 
+class WorkLog(Base):
+    __tablename__ = "work_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
+    date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    start_time: Mapped[datetime | None] = mapped_column(DateTime)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime)
+    worked_hours: Mapped[float | None] = mapped_column(Float)
+
+    employee: Mapped["Employee"] = relationship(back_populates="work_logs")
 
 class DismissalReason(Base):
     __tablename__ = "dismissal_reasons"
