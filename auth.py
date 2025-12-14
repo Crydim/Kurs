@@ -11,10 +11,25 @@ from db import SessionLocal
 def hash_password(password: str) -> str:
     return bcrypt.hash(password)
 
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.verify(plain_password, hashed_password)
 
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.verify(password, hashed)
-
+def authenticate_user(login: str, password: str, session: Session | None = None) -> User | None:
+    close_session = False
+    if session is None:
+        session = SessionLocal()
+        close_session = True
+    try:
+        # login (строка) — это то, что вводит пользователь, в БД поле называется username
+        user = session.query(User).filter(User.username == login).first()
+        if not user:
+            return None
+        if not verify_password(password, user.password_hash):
+            return None
+        return user
+    finally:
+        if close_session:
+            session.close()
 
 def ensure_admin_exists() -> None:
     with SessionLocal() as session:

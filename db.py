@@ -17,9 +17,6 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def init_db() -> None:
-    """
-    Инициализация схемы БД.
-    """
     from models import (  # noqa: F401
         User,
         AccessLevel,
