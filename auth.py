@@ -20,7 +20,6 @@ def authenticate_user(login: str, password: str, session: Session | None = None)
         session = SessionLocal()
         close_session = True
     try:
-        # login (строка) — это то, что вводит пользователь, в БД поле называется username
         user = session.query(User).filter(User.username == login).first()
         if not user:
             return None

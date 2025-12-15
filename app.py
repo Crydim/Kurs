@@ -1,11 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 
 from sqlalchemy.orm import Session
 
-from auth import authenticate_user
+from auth import authenticate_user, hash_password
 from db import SessionLocal
-from models import User, Employee, AppRole
+from models import User, Employee, AppRole, Department
 from permissions import can_view_employee, get_managers_and_departments
 from work_time import start_workday, end_workday
 from backup import create_backup, export_employees_to_csv
@@ -15,7 +15,7 @@ class LoginWindow(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("HR-система - Вход")
-        self.geometry("300x150")
+        self.geometry("800x400")
         self.session: Session = SessionLocal()
         self.user: User | None = None
 
@@ -79,6 +79,9 @@ class MainWindow(tk.Tk):
             self.backup_tab = ttk.Frame(self.notebook)
             self.notebook.add(self.backup_tab, text="Бэкапы и выгрузки")
             self.build_backup_tab()
+            self.hr_tab = ttk.Frame(self.notebook)
+            self.notebook.add(self.hr_tab, text="Сотрудники (HR)")
+            self.build_hr_tab()
 
     def build_employee_tab(self):
         employee: Employee | None = self.user.employee
@@ -246,3 +249,210 @@ class MainWindow(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Ошибка экспорта", str(exc))
             self.log_backup_message(f"Ошибка экспорта сотрудников: {exc!r}")
+
+    def build_hr_tab(self):
+        form_frame = tk.LabelFrame(self.hr_tab, text="Добавить сотрудника")
+        form_frame.pack(fill=tk.X, padx=10, pady=10)
+        tk.Label(form_frame, text="ФИО:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        self.hr_fullname_entry = tk.Entry(form_frame, width=40)
+        self.hr_fullname_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+
+        tk.Label(form_frame, text="Должность:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        self.hr_position_entry = tk.Entry(form_frame, width=40)
+        self.hr_position_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        tk.Label(form_frame, text="Отдел:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        self.hr_department_combo = ttk.Combobox(form_frame, state="readonly", width=37)
+        self.hr_department_combo.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+
+        departments = self.session.query(Department).order_by(Department.name).all()
+        self.hr_departments_by_name = {d.name: d.id for d in departments}
+        self.hr_department_combo["values"] = list(self.hr_departments_by_name.keys())
+
+        user_frame = tk.LabelFrame(self.hr_tab, text="Учетная запись (User)")
+        user_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        tk.Label(user_frame, text="Логин:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        self.hr_username_entry = tk.Entry(user_frame, width=30)
+        self.hr_username_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+
+        tk.Label(user_frame, text="Пароль:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        self.hr_password_entry = tk.Entry(user_frame, width=30, show="*")
+        self.hr_password_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        tk.Label(user_frame, text="Роль:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        self.hr_role_combo = ttk.Combobox(user_frame, state="readonly", width=27)
+        self.hr_role_combo["values"] = [
+            AppRole.EMPLOYEE.value,
+            AppRole.MANAGER.value,
+        ]
+        self.hr_role_combo.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        self.hr_role_combo.set(AppRole.EMPLOYEE.value)
+
+        tk.Button(
+            form_frame,
+            text="Добавить сотрудника и пользователя",
+            command=self.on_hr_add_employee,
+        ).grid(row=3, column=0, columnspan=2, pady=10)
+
+        add_dept_btn = tk.Button(
+            form_frame,
+            text="Добавить отдел",
+            command=self.on_hr_add_department,
+        )
+        add_dept_btn.grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        list_frame = tk.LabelFrame(self.hr_tab, text="Сотрудники")
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.hr_tree = ttk.Treeview(
+            list_frame,
+            columns=("id", "name", "position", "department"),
+            show="headings",
+        )
+        self.hr_tree.heading("id", text="ID")
+        self.hr_tree.heading("name", text="ФИО")
+        self.hr_tree.heading("position", text="Должность")
+        self.hr_tree.heading("department", text="Отдел")
+        self.hr_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.refresh_hr_departments()
+        self.refresh_hr_employees()
+
+    def on_hr_add_employee(self):
+        full_name = self.hr_fullname_entry.get().strip()
+        position = self.hr_position_entry.get().strip()
+        dept_name = self.hr_department_combo.get().strip()
+
+        username = self.hr_username_entry.get().strip()
+        password = self.hr_password_entry.get().strip()
+        role_value = self.hr_role_combo.get().strip()
+        if not full_name:
+            messagebox.showerror("Ошибка", "ФИО обязательно для заполнения")
+            return
+        if not username:
+            messagebox.showerror("Ошибка", "Логин обязателен для создания пользователя")
+            return
+        if not password:
+            messagebox.showerror("Ошибка", "Пароль обязателен для создания пользователя")
+            return
+        if not role_value:
+            messagebox.showerror("Ошибка", "Роль пользователя не выбрана")
+            return
+        dept_id = None
+        if dept_name:
+            dept_id = self.hr_departments_by_name.get(dept_name)
+            if dept_id is None:
+                messagebox.showerror("Ошибка", f"Выбран несуществующий отдел: '{dept_name}'")
+                return
+
+        try:
+            existing_user = (
+                self.session.query(User)
+                .filter(User.username == username)
+                .one_or_none()
+            )
+            if existing_user is not None:
+                messagebox.showerror("Ошибка", f"Пользователь с логином '{username}' уже существует")
+                return
+            try:
+                role = AppRole(role_value)
+            except ValueError:
+                messagebox.showerror("Ошибка", f"Неверное значение роли: '{role_value}'")
+                return
+            new_emp = Employee(
+                full_name=full_name,
+                position=position or None,
+                department_id=dept_id,
+            )
+            self.session.add(new_emp)
+            hashed = hash_password(password)
+            new_user = User(
+                username=username,
+                password_hash=hashed,
+                role=role,
+                employee=new_emp,
+            )
+            self.session.add(new_user)
+            self.session.commit()
+
+        except Exception as exc:
+            self.session.rollback()
+            print("Ошибка при добавлении сотрудника:", exc)
+            messagebox.showerror("Ошибка", f"Не удалось добавить сотрудника/пользователя: {exc}")
+            return
+
+        messagebox.showinfo(
+            "Успех",
+            f"Сотрудник '{full_name}' и пользователь '{username}' добавлены",
+        )
+
+        self.hr_fullname_entry.delete(0, tk.END)
+        self.hr_position_entry.delete(0, tk.END)
+        self.hr_username_entry.delete(0, tk.END)
+        self.hr_password_entry.delete(0, tk.END)
+
+        # по умолчанию ставим роль сотрудника
+        self.hr_role_combo.set(AppRole.EMPLOYEE.value)
+
+        # сбрасываем выбор отдела
+        self.hr_department_combo.set("")
+
+        # обновляем список сотрудников в интерфейсе
+        self.refresh_hr_employees()
+    def refresh_hr_employees(self):
+        for row_id in self.hr_tree.get_children():
+            self.hr_tree.delete(row_id)
+        employees = (
+            self.session.query(Employee)
+            .outerjoin(Department)
+            .order_by(Employee.full_name)
+            .all()
+        )
+
+        for emp in employees:
+            dept_name = emp.department.name if emp.department else ""
+            self.hr_tree.insert(
+                "",
+                "end",
+                values=(
+                    emp.id,
+                    emp.full_name,
+                    emp.position or "",
+                    dept_name,
+                ),
+            )
+
+    def on_hr_add_department(self):
+        name = simpledialog.askstring("Новый отдел", "Введите название отдела:")
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        existing = (
+            self.session.query(Department)
+            .filter(Department.name == name)
+            .one_or_none()
+        )
+        if existing is not None:
+            messagebox.showerror("Ошибка", f"Отдел с названием '{name}' уже существует")
+            return
+
+        try:
+            new_dept = Department(name=name)
+            self.session.add(new_dept)
+            self.session.commit()
+        except Exception as exc:
+            self.session.rollback()
+            messagebox.showerror("Ошибка", f"Не удалось добавить отдел: {exc}")
+            return
+        messagebox.showinfo("Успех", f"Отдел '{name}' добавлен")
+        self.refresh_hr_departments()
+
+    def refresh_hr_departments(self):
+        departments = (
+            self.session.query(Department)
+            .order_by(Department.name)
+            .all()
+        )
+        self.hr_departments_by_name = {d.name: d.id for d in departments}
+        self.hr_department_combo["values"] = list(self.hr_departments_by_name.keys())
