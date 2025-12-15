@@ -2,14 +2,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
 from sqlalchemy.orm import Session
-
+from datetime import datetime
+import os
 from auth import authenticate_user, hash_password
 from db import SessionLocal
 from models import User, Employee, AppRole, Department
 from permissions import can_view_employee, get_managers_and_departments
 from work_time import start_workday, end_workday
 from backup import create_backup, export_employees_to_csv
-
+from settings import settings as app_settings
 
 class LoginWindow(tk.Tk):
     def __init__(self):
@@ -232,13 +233,8 @@ class MainWindow(tk.Tk):
             self.log_backup_message(f"Ошибка бэкапа: {exc!r}")
 
     def on_export_employees(self):
-        from datetime import datetime
-        import os
-
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"employees_{ts}.csv"
-        from settings import settings as app_settings
-
         out_dir = app_settings.BACKUP_DIR
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, filename)
@@ -373,31 +369,23 @@ class MainWindow(tk.Tk):
             )
             self.session.add(new_user)
             self.session.commit()
-
         except Exception as exc:
             self.session.rollback()
             print("Ошибка при добавлении сотрудника:", exc)
             messagebox.showerror("Ошибка", f"Не удалось добавить сотрудника/пользователя: {exc}")
             return
-
         messagebox.showinfo(
-            "Успех",
+            "",
             f"Сотрудник '{full_name}' и пользователь '{username}' добавлены",
         )
-
         self.hr_fullname_entry.delete(0, tk.END)
         self.hr_position_entry.delete(0, tk.END)
         self.hr_username_entry.delete(0, tk.END)
         self.hr_password_entry.delete(0, tk.END)
-
-        # по умолчанию ставим роль сотрудника
         self.hr_role_combo.set(AppRole.EMPLOYEE.value)
-
-        # сбрасываем выбор отдела
         self.hr_department_combo.set("")
-
-        # обновляем список сотрудников в интерфейсе
         self.refresh_hr_employees()
+
     def refresh_hr_employees(self):
         for row_id in self.hr_tree.get_children():
             self.hr_tree.delete(row_id)
@@ -445,7 +433,7 @@ class MainWindow(tk.Tk):
             self.session.rollback()
             messagebox.showerror("Ошибка", f"Не удалось добавить отдел: {exc}")
             return
-        messagebox.showinfo("Успех", f"Отдел '{name}' добавлен")
+        messagebox.showinfo("", f"Отдел '{name}' добавлен")
         self.refresh_hr_departments()
 
     def refresh_hr_departments(self):
