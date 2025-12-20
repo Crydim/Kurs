@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterable
 import csv
 from sqlalchemy.orm import Session
+import subprocess
+import requests
 
 from settings import settings
 from models import (
@@ -151,3 +153,77 @@ def create_backup(session: Session, upload_sftp: bool = False) -> tuple[str, str
         remote_path = _upload_via_sftp(local_path)
 
     return local_path, remote_path
+
+def create_full_sql_backup() -> str:
+    os.makedirs(settings.BACKUP_DIR, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"full_backup_{ts}.sql"
+    backup_path = os.path.join(settings.BACKUP_DIR, backup_filename)
+    cmd = [
+        settings.PG_DUMP_PATH,
+        "-h",
+        settings.PG_HOST,
+        "-p",
+        str(settings.PG_PORT),
+        "-U",
+        settings.PG_USER,
+        "-d",
+        settings.PG_DBNAME,
+        "-F",
+        "p",  # plain text SQL
+        "-f",
+        backup_path,
+    ]
+    env = os.environ.copy()
+    env["PGPASSWORD"] = settings.PG_PASSWORD
+    result = subprocess.run(
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        if os.path.exists(backup_path):
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+        raise RuntimeError(
+            f"Ошибка pg_dump (код {result.returncode}):\n{result.stderr}"
+        )
+    return backup_path
+
+YANDEX_DISK_API_BASE = "https://cloud-api.yandex.net/v1/disk"
+
+
+def upload_to_yandex_disk(local_path: str) -> str:
+    token = settings.YANDEX_DISK_TOKEN
+    if not token:
+        raise RuntimeError("Не задан токен YANDEX_DISK_TOKEN в settings/.env")
+
+    filename = os.path.basename(local_path)
+    remote_path = f"{settings.YANDEX_DISK_FOLDER}/{filename}"
+
+    params = {
+        "path": remote_path,
+        "overwrite": "true",
+    }
+    headers = {
+        "Authorization": f"OAuth {token}",
+    }
+    resp = requests.get(
+        f"{YANDEX_DISK_API_BASE}/resources/upload",
+        params=params,
+        headers=headers,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    upload_url = resp.json()["href"]
+
+    with open(local_path, "rb") as f:
+        put_resp = requests.put(upload_url, data=f, timeout=300)
+    put_resp.raise_for_status()
+
+    return remote_path

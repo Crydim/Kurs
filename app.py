@@ -9,7 +9,7 @@ from db import SessionLocal
 from models import User, Employee, AppRole, Department
 from permissions import can_view_employee, get_managers_and_departments
 from work_time import start_workday, end_workday
-from backup import create_backup, export_employees_to_csv
+from backup import create_backup, export_employees_to_csv, create_full_sql_backup, upload_to_yandex_disk
 from settings import settings as app_settings
 
 class LoginWindow(tk.Tk):
@@ -178,6 +178,21 @@ class MainWindow(tk.Tk):
             dept_name = m.department.name if m.department else "-"
             tree.insert("", tk.END, values=(m.full_name, dept_name))
 
+    def on_full_sql_backup_to_yandex(self):
+        try:
+            local_path = create_full_sql_backup()
+            remote_path = upload_to_yandex_disk(local_path)
+            msg = (
+                f"Полный SQL-бэкап PostgreSQL создан:\n{local_path}\n\n"
+                f"Загружен на Яндекс.Диск:\n{remote_path}"
+            )
+            messagebox.showinfo("Полный бэкап PostgreSQL", msg)
+            self.log_backup_message(msg)
+        except Exception as exc:
+            err_msg = f"Ошибка полного бэкапа PostgreSQL: {exc}"
+            messagebox.showerror("Ошибка полного бэкапа PostgreSQL", err_msg)
+            self.log_backup_message(err_msg)
+
     def build_backup_tab(self):
         frame = self.backup_tab
 
@@ -210,6 +225,13 @@ class MainWindow(tk.Tk):
             command=self.on_export_employees,
             width=25,
         ).grid(row=1, column=0, padx=5, pady=5)
+
+        tk.Button(
+            btn_frame,
+            text="Полный SQL-бэкап PostgreSQL и отправка на Яндекс.Диск",
+            command=self.on_full_sql_backup_to_yandex,
+            width=45,
+        ).grid(row=2, column=0, columnspan=2, padx=5, pady=5)
 
         self.backup_log = tk.Text(frame, height=10, state="disabled")
         self.backup_log.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
